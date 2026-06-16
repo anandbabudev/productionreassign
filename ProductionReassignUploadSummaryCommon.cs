@@ -1,5 +1,8 @@
 using System.Text.Json;
 using AdroitQMS.CA.Application.ProductionReassign.GetProductionReassignUploadSummary;
+using AdroitQMS.CA.Core.AuditAggregate.AdoNetSpecifications;
+using AdroitQMS.CA.Core.UniverseAggregate.AdoNetSpecifications;
+using Infrastructure.Repositories.Interfaces;
 
 namespace AdroitQMS.CA.Application.ProductionReassignWorkflowAction.Queries.GetProductionReassignUploadSummary;
 
@@ -36,6 +39,41 @@ internal static class ProductionReassignUploadSummaryCommon
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Resolves the subset of uploaded LogIDs that are valid fetch/touch-log targets for the
+    /// given audit form and level — the C# equivalent of the SP's "Invalid LogID." LEFT JOIN checks
+    /// against tblAuditTouchLogs (AuditType 1) or tblSystemFetchLogs (AuditType 2).
+    /// </summary>
+    public static async Task<ISet<int>> FetchValidLogIdsAsync(
+        IQMSClientDbAdoNetRepositoryFactory qmsClientDbAdoNetRepositoryFactory,
+        int projectGroupId,
+        IEnumerable<int> logIds,
+        int auditType,
+        int auditFormId,
+        int auditLevel,
+        int actionFromStatus,
+        CancellationToken cancellationToken)
+    {
+        var ids = logIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return new HashSet<int>();
+        }
+
+        using var repo = await qmsClientDbAdoNetRepositoryFactory.CreateReadAsync(projectGroupId, cancellationToken);
+        if (auditType == 1)
+        {
+            var rows = await repo.ListAsync(
+                new GetValidAuditTouchLogIdsSpec(ids, auditFormId, auditLevel), cancellationToken);
+            return rows.Select(r => r.AuditTouchLogID).ToHashSet();
+        }
+
+        var fetchRows = await repo.ListAsync(
+            new GetValidSystemFetchLogIdsSpec(ids, auditFormId, auditLevel, actionFromStatus),
+            cancellationToken);
+        return fetchRows.Select(r => r.SystemFetchLogID).ToHashSet();
     }
 
     public static bool ResolveCommentsRequired(

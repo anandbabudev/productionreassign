@@ -77,29 +77,18 @@ public static partial class GetProductionReassignUploadSummaryHandler
         return new AuditFormConfig(form.AuditDataSourceID, commentsRequired);
     }
 
-    private static async Task<ISet<int>> FetchValidLogIdsAsync(
+    private static Task<ISet<int>> FetchValidLogIdsAsync(
         GetProductionReassignUploadSummaryQuery request,
         IEnumerable<int> logIds,
         IQMSClientDbAdoNetRepositoryFactory qmsClientDbAdoNetRepositoryFactory,
-        CancellationToken cancellationToken)
-    {
-        var ids = logIds.Distinct().ToList();
-        if (ids.Count == 0)
-        {
-            return new HashSet<int>();
-        }
-
-        using var repo = await qmsClientDbAdoNetRepositoryFactory.CreateReadAsync(request.ProjectGroupId, cancellationToken);
-        if (request.AuditType == 1)
-        {
-            var rows = await repo.ListAsync(
-                new GetValidAuditTouchLogIdsSpec(ids, request.AuditFormId, request.AuditLevel), cancellationToken);
-            return rows.Select(r => r.AuditTouchLogID).ToHashSet();
-        }
-
-        var fetchRows = await repo.ListAsync(
-            new GetValidSystemFetchLogIdsSpec(ids, request.AuditFormId, request.AuditLevel, request.ActionFromStatus),
+        CancellationToken cancellationToken) =>
+        ProductionReassignUploadSummaryCommon.FetchValidLogIdsAsync(
+            qmsClientDbAdoNetRepositoryFactory,
+            request.ProjectGroupId,
+            logIds,
+            request.AuditType,
+            request.AuditFormId,
+            request.AuditLevel,
+            request.ActionFromStatus,
             cancellationToken);
-        return fetchRows.Select(r => r.SystemFetchLogID).ToHashSet();
-    }
 }
